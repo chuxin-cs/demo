@@ -1,5 +1,5 @@
 <template>
-  <div style="width: 8000px;height: 300px;background-color: #000;display: flex;">
+  <div style="width: 300px;height: 300px;">
     <div id="app1"></div>
     <div id="app2"></div>
     <div id="app3"></div>
@@ -15,15 +15,16 @@
 <script lang="ts" setup>
 
   setTimeout(()=>{
-    for(let i =1;i<9;i++){
-      // 西瓜播放器资源
-      // player.play(document.getElementById(`app${i}`),'http://sf1-cdn-tos.huoshanstatic.com/obj/media-fe/xgplayer_doc_video/flv/xgplayer-demo-720p.flv').catch((err) => {
-      //   console.log(err);
-      // })
+    // 西瓜播放器资源
+    // player.play(document.getElementById(`app${i}`),'http://sf1-cdn-tos.huoshanstatic.com/obj/media-fe/xgplayer_doc_video/flv/xgplayer-demo-720p.flv').catch((err) => {
+    //   console.log(err);
+    // })
 
-      // go flv-live-server 起的服务
-      play(document.getElementById(`app${i}`),'http://localhost:8080/live.flv')
-    }
+    // go flv-live-server 起的服务
+    // play(document.getElementById("app1"),'http://localhost:8080/live.flv')
+
+
+    play(document.getElementById("app1"),'rtmp://127.0.0.1:1935/live/test')
   },3000)
 
   function play(container,url){
