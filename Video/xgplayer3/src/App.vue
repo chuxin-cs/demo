@@ -15,7 +15,7 @@ setTimeout(() => {
   let player = new Player({
     id: 'mse',
     // url: 'http://sf1-cdn-tos.huoshanstatic.com/obj/media-fe/xgplayer_doc_video/flv/xgplayer-demo-720p.flv',
-    url: '../public/output_aac.flv',
+    url: '../public/flv/202512241446_aac.flv',
     height: '200px',
     width: '200px',
     plugins: [FlvPlugin],
