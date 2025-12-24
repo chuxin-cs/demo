@@ -1,15 +1,34 @@
 <template>
-  <div style="width: 200px;height: 200px;background-color: #000;">
+  <div style="width: 8000px;height: 300px;background-color: #000;display: flex;">
     <div id="app1"></div>
+    <div id="app2"></div>
+    <div id="app3"></div>
+    <div id="app4"></div>
+    <div id="app5"></div>
+    <div id="app6"></div>
+    <div id="app7"></div>
+    <div id="app8"></div>
+    <div id="app9"></div>
   </div>
 </template>
 
 <script lang="ts" setup>
 
   setTimeout(()=>{
-   console.log(window.Jessibuca)
-  const player =  new window.Jessibuca({
-          container: document.getElementById("app1"),
+    for(let i =1;i<9;i++){
+      // 西瓜播放器资源
+      // player.play(document.getElementById(`app${i}`),'http://sf1-cdn-tos.huoshanstatic.com/obj/media-fe/xgplayer_doc_video/flv/xgplayer-demo-720p.flv').catch((err) => {
+      //   console.log(err);
+      // })
+
+      // go flv-live-server 起的服务
+      play(document.getElementById(`app${i}`),'http://localhost:8080/live.flv')
+    }
+  },3000)
+
+  function play(container,url){
+      const player =  new window.Jessibuca({
+          container: container,
           isFlv: true,
           videoBuffer: 0.2, // 缓冲时长
           isResize: false, // 是否自动调整大小
@@ -28,11 +47,11 @@
             audio: true, // 音频按钮
           },
         });
-
-      // ../public/output_aac.flv
-        player.play('http://sf1-cdn-tos.huoshanstatic.com/obj/media-fe/xgplayer_doc_video/flv/xgplayer-demo-720p.flv').catch((err) => {
-    console.log(err);
-  })
-  },3000)
+        
+   
+      player.play(url).catch((err) => {
+        console.log(err);
+      })
+  }
 
 </script>
