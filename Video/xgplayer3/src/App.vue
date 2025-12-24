@@ -80,6 +80,36 @@ function play(id){
     height: '200px',
     width: '200px',
     plugins: [FlvPlugin,HlsPlugin],
+    // isLive: true,
+    autoplay: true,
+    muted: true,
+
+    // ⭐⭐⭐ 核心参数 ⭐⭐⭐
+    hls: {
+      // ====== Live 行为 ======
+  liveSyncDuration: 1,           // 距离 live 1s
+  liveMaxLatencyDuration: 2,     // 超过 2s 强制追帧
+
+  // ====== Buffer 硬限制 ======
+  maxBufferLength: 2,            // ⭐ 最大前向 buffer（秒）
+  maxMaxBufferLength: 4,         // ⭐ 上限兜底
+  backBufferLength: 0,           // ⭐ 不保留历史
+
+  // ====== LL-HLS ======
+  lowLatencyMode: true,
+  enableWorker: true,
+
+  // ====== 网络容错 ======
+  fragLoadingTimeOut: 20000,
+  manifestLoadingTimeOut: 10000,
+  fragLoadingRetryDelay: 1000,
+  manifestLoadingRetryDelay: 1000,
+
+  // ====== 彻底防内存增长 ======
+  appendErrorMaxRetry: 3,
+    },
+
+    preloadTime: 1,
   });
 }
 
@@ -102,7 +132,8 @@ body {
   height: 100%;
 
 }
-.app-container > div{
+
+.app-container>div {
   display: inline-block;
 }
 </style>
