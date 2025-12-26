@@ -24,7 +24,7 @@
     // play(document.getElementById("app1"),'http://localhost:8080/live.flv')
 
 
-    play(document.getElementById("app1"),'rtmp://127.0.0.1:1935/live/test')
+    play(document.getElementById("app1"),'http://127.0.0.1:8888/live/test/index.m3u8')
   },3000)
 
   function play(container,url){

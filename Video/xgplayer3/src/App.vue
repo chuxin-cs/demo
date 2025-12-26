@@ -16,6 +16,11 @@
     <div id="mse14"></div>
     <div id="mse15"></div>
     <div id="mse16"></div>
+    <div id="mse17"></div>
+    <div id="mse18"></div>
+    <div id="mse19"></div>
+    <div id="mse20"></div>
+    <div id="mse21"></div>
     <!-- <APlayer/> -->
   </div>
 </template>
@@ -70,6 +75,11 @@ setTimeout(() => {
   play("mse14")
   play("mse15")
   play("mse16")
+  play("mse17")
+  play("mse18")
+  play("mse19")
+  play("mse20")
+  play("mse21")
 }, 3000);
 
 
