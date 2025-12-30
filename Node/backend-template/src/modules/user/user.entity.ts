@@ -7,8 +7,13 @@ export class UserEntity extends CommonEntity {
   @Column({ unique: true })
   username: string;
 
-  //Exclude 对数据进行脱密 不映射和返回到前端
+  // 使用 Class-Transformer 隐藏敏感字段，需配合全局序列化拦截器
   @Exclude()
   @Column()
   password: string;
+
+  // 为密码哈希增加随机盐，抵御彩虹表攻击
+  @Exclude()
+  @Column({ name: 'password_salt' })
+  passwordSalt: string;
 }
