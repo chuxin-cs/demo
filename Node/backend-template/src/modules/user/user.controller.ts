@@ -1,5 +1,6 @@
 import { UserService } from './user.service';
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
+import { UserDto } from '~/modules/user/user.dto';
 
 @Controller('user')
 export class UserController {
@@ -8,5 +9,15 @@ export class UserController {
   @Get()
   list() {
     return this.userService.list();
+  }
+
+  @Get(':id')
+  async findOne(id: number) {
+    return this.userService.findUserById({ id });
+  }
+
+  @Get('add')
+  async add(@Query() dto: UserDto) {
+    return this.userService.create(dto);
   }
 }
