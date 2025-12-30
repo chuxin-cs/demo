@@ -94,10 +94,10 @@ export class UserController {
   }
 
   @Get('export')
-  async export(@Res() res: Response) {
+  export(@Res() res: Response) {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="users.csv"');
-    const stream = await this.userService.exportCsvStream();
+    const stream = this.userService.exportCsvStream();
     stream.pipe(res);
   }
 }

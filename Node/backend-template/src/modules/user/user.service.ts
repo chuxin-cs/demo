@@ -203,13 +203,14 @@ export class UserService {
   }
 
   // 流式导出，适合数据量更大时避免占用大量内存
-  async exportCsvStream(): Promise<PassThrough> {
+  exportCsvStream(): PassThrough {
     const stream = new PassThrough();
-    const header = ['id', 'username', 'created_at', 'updated_at'].join(',') + '\n';
+    const header =
+      ['id', 'username', 'created_at', 'updated_at'].join(',') + '\n';
     stream.write(header);
     const batchSize = 1000;
     let offset = 0;
-    (async () => {
+    void (async () => {
       try {
         while (true) {
           const batch = await this.userRepository.find({
