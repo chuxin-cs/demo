@@ -158,7 +158,7 @@ body {
   border-right: 1px solid rgba(113, 113, 122, 0.2);
   color: rgba(113, 113, 122, 0.85);
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   line-height: 1.6;
 }
 
@@ -168,7 +168,7 @@ body {
 }
 
 .tiptap-codeblock__gutter-line {
-  height: 1.6em;
+  line-height: inherit;
 }
 
 .tiptap-codeblock__content {
