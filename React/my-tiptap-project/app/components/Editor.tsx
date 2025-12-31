@@ -96,6 +96,7 @@ function CodeBlockNodeView({ node, updateAttributes }: NodeViewProps) {
   const currentLanguage = (node.attrs.language as string | null) ?? null;
   const theme = ((node.attrs.theme as CodeBlockTheme | undefined) ?? 'darcula') satisfies CodeBlockTheme;
   const [copied, setCopied] = useState(false);
+  const lineCount = Math.max(1, node.textContent.split('\n').length);
 
   const languages = useMemo(() => {
     const list = lowlight.listLanguages();
@@ -154,9 +155,18 @@ function CodeBlockNodeView({ node, updateAttributes }: NodeViewProps) {
         </Button>
       </div>
 
-      <pre className="tiptap-codeblock__pre" data-theme={theme}>
-        <NodeViewContent as={'code' as never} className="tiptap-codeblock__content hljs" />
-      </pre>
+      <div className="tiptap-codeblock__scroll">
+        <div className="tiptap-codeblock__gutter" contentEditable={false}>
+          {Array.from({ length: lineCount }).map((_, i) => (
+            <div key={i} className="tiptap-codeblock__gutter-line">
+              {i + 1}
+            </div>
+          ))}
+        </div>
+        <pre className="tiptap-codeblock__pre" data-theme={theme}>
+          <NodeViewContent as={'code' as never} className="tiptap-codeblock__content hljs" />
+        </pre>
+      </div>
     </NodeViewWrapper>
   );
 }
@@ -176,6 +186,32 @@ const CodeBlockWithUI = CodeBlockLowlight.extend({
   },
   addNodeView() {
     return ReactNodeViewRenderer(CodeBlockNodeView);
+  },
+  addKeyboardShortcuts() {
+    return {
+      Enter: () => {
+        if (!this.editor.isActive('codeBlock')) return false;
+        this.editor.commands.insertContent('\n');
+        return true;
+      },
+      Tab: () => {
+        if (!this.editor.isActive('codeBlock')) return false;
+        this.editor.commands.insertContent('\t');
+        return true;
+      },
+      'Shift-Tab': () => {
+        if (!this.editor.isActive('codeBlock')) return false;
+        const { from, empty } = this.editor.state.selection;
+        if (empty && from > 1) {
+          const prev = this.editor.state.doc.textBetween(from - 1, from, '\n', '\n');
+          if (prev === '\t') {
+            this.editor.commands.deleteRange({ from: from - 1, to: from });
+            return true;
+          }
+        }
+        return true;
+      },
+    };
   },
 });
 
@@ -668,7 +704,7 @@ export default function Editor() {
   const editor = useEditor(
     {
       extensions: [
-        StarterKit.configure(collabReady ? { undoRedo: false } : {}),
+        StarterKit.configure({ ...(collabReady ? { undoRedo: false } : {}), codeBlock: false }),
         Underline,
         Highlight,
         Typography,

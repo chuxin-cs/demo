@@ -17,7 +17,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
+    --background: #ccc;
     --foreground: #ededed;
   }
 }
@@ -139,9 +139,36 @@ body {
 .tiptap-codeblock .tiptap-codeblock__pre {
   margin: 0;
   padding: 0.75rem 1rem;
-  overflow: auto;
+  overflow: visible;
   border-radius: 0;
   background: transparent;
+}
+
+.tiptap-codeblock__scroll {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: stretch;
+  overflow: auto;
+}
+
+.tiptap-codeblock__gutter {
+  user-select: none;
+  text-align: right;
+  padding: 0.75rem 0.75rem;
+  border-right: 1px solid rgba(113, 113, 122, 0.2);
+  color: rgba(113, 113, 122, 0.85);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+
+.dark .tiptap-codeblock__gutter {
+  border-right-color: rgba(161, 161, 170, 0.2);
+  color: rgba(161, 161, 170, 0.85);
+}
+
+.tiptap-codeblock__gutter-line {
+  height: 1.6em;
 }
 
 .tiptap-codeblock__content {
