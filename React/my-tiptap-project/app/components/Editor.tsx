@@ -1,7 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { EditorContent, useEditor } from '@tiptap/react';
+import {
+  EditorContent,
+  NodeViewContent,
+  NodeViewWrapper,
+  ReactNodeViewRenderer,
+  type NodeViewProps,
+  useEditor,
+} from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
@@ -26,12 +33,13 @@ import Dropcursor from '@tiptap/extension-dropcursor';
 import Gapcursor from '@tiptap/extension-gapcursor';
 import DragHandle from '@tiptap/extension-drag-handle';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
-import { createLowlight } from 'lowlight';
+import { common, createLowlight } from 'lowlight';
 import Collaboration from '@tiptap/extension-collaboration';
 import { WebsocketProvider } from 'y-websocket';
 import * as Y from 'yjs';
 import tippy, { Instance as TippyInstance } from 'tippy.js';
 import { defaultSelectionBuilder, yCursorPlugin } from '@tiptap/y-tiptap';
+import { Button } from '@/components/tiptap-ui-primitive/button';
 
 type Range = { from: number; to: number };
 type SuggestionItem = {
@@ -51,9 +59,125 @@ type EmojiItem = {
   command: (ctx: { editor: TiptapEditor; range: Range }) => void;
 };
 
-const lowlight = createLowlight();
+const lowlight = createLowlight(common);
 const SLASH_SUGGESTION_KEY = new PluginKey('slash-command');
 const EMOJI_SUGGESTION_KEY = new PluginKey('emoji-command');
+
+type CodeBlockTheme = 'darcula' | 'light';
+const CODE_BLOCK_THEMES: Array<{ id: CodeBlockTheme; label: string }> = [
+  { id: 'darcula', label: 'Darcula' },
+  { id: 'light', label: 'Light' },
+];
+
+function prettyLanguageLabel(id: string) {
+  if (!id) return 'Plain text';
+  return id
+    .split(/[-_]/g)
+    .map((p) => (p ? p[0].toUpperCase() + p.slice(1) : p))
+    .join(' ');
+}
+
+async function copyToClipboard(text: string) {
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const el = document.createElement('textarea');
+  el.value = text;
+  el.style.position = 'fixed';
+  el.style.left = '-9999px';
+  document.body.appendChild(el);
+  el.select();
+  document.execCommand('copy');
+  el.remove();
+}
+
+function CodeBlockNodeView({ node, updateAttributes }: NodeViewProps) {
+  const currentLanguage = (node.attrs.language as string | null) ?? null;
+  const theme = ((node.attrs.theme as CodeBlockTheme | undefined) ?? 'darcula') satisfies CodeBlockTheme;
+  const [copied, setCopied] = useState(false);
+
+  const languages = useMemo(() => {
+    const list = lowlight.listLanguages();
+    const unique = Array.from(new Set(list)).sort((a, b) => a.localeCompare(b));
+    return ['plaintext', ...unique];
+  }, []);
+
+  useEffect(() => {
+    if (!copied) return;
+    const t = window.setTimeout(() => setCopied(false), 1200);
+    return () => window.clearTimeout(t);
+  }, [copied]);
+
+  return (
+    <NodeViewWrapper className="tiptap-codeblock" data-theme={theme}>
+      <div className="tiptap-codeblock__header" contentEditable={false}>
+        <div className="tiptap-codeblock__header-left">
+          <select
+            className="tiptap-codeblock__select"
+            value={currentLanguage ?? 'plaintext'}
+            onChange={(e) => {
+              const next = e.target.value;
+              updateAttributes({ language: next === 'plaintext' ? null : next });
+            }}
+          >
+            {languages.map((lang) => (
+              <option key={lang} value={lang}>
+                {prettyLanguageLabel(lang === 'plaintext' ? '' : lang)}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="tiptap-codeblock__select"
+            value={theme}
+            onChange={(e) => updateAttributes({ theme: e.target.value })}
+          >
+            {CODE_BLOCK_THEMES.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <Button
+          type="button"
+          data-style="ghost"
+          tooltip={copied ? '已复制' : '复制代码'}
+          onClick={async () => {
+            await copyToClipboard(node.textContent);
+            setCopied(true);
+          }}
+        >
+          <span className="tiptap-button-text">{copied ? 'Copied' : 'Copy'}</span>
+        </Button>
+      </div>
+
+      <pre className="tiptap-codeblock__pre" data-theme={theme}>
+        <NodeViewContent as={'code' as never} className="tiptap-codeblock__content hljs" />
+      </pre>
+    </NodeViewWrapper>
+  );
+}
+
+const CodeBlockWithUI = CodeBlockLowlight.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      theme: {
+        default: 'darcula',
+        parseHTML: (element) => element.getAttribute('data-theme') ?? 'darcula',
+        renderHTML: (attributes) => {
+          return { 'data-theme': attributes.theme };
+        },
+      },
+    };
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(CodeBlockNodeView);
+  },
+});
 
 const CollaborationCursor = Extension.create({
   name: 'collaborationCursor',
@@ -563,9 +687,7 @@ export default function Editor() {
         TableRow,
         TableHeader,
         TableCell,
-        CodeBlockLowlight.configure({
-          lowlight,
-        }),
+        CodeBlockWithUI.configure({ lowlight }),
         Dropcursor,
         Gapcursor,
         DragHandle.configure({
@@ -742,86 +864,97 @@ export default function Editor() {
     <div className="flex h-full w-full flex-col">
       <div className="flex items-center justify-between border-b border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-black">
         <div className="flex flex-wrap gap-2">
-          <button
-            className="rounded-md border border-zinc-200 px-2 py-1 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
-            onClick={() => {
-              if (!editor) return;
-              editor.commands.undo();
-            }}
+          <Button
+            type="button"
+            data-style="ghost"
+            tooltip="Undo"
+            disabled={!editor}
+            onClick={() => editor?.commands.undo()}
           >
-            Undo
-          </button>
-          <button
-            className="rounded-md border border-zinc-200 px-2 py-1 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
-            onClick={() => {
-              if (!editor) return;
-              editor.commands.redo();
-            }}
+            <span className="tiptap-button-text">Undo</span>
+          </Button>
+          <Button
+            type="button"
+            data-style="ghost"
+            tooltip="Redo"
+            disabled={!editor}
+            onClick={() => editor?.commands.redo()}
           >
-            Redo
-          </button>
-          <button
-            className={`rounded-md border border-zinc-200 px-2 py-1 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900 ${
-              editor?.isActive('bold') ? 'bg-zinc-100 dark:bg-zinc-900' : ''
-            }`}
+            <span className="tiptap-button-text">Redo</span>
+          </Button>
+          <Button
+            type="button"
+            data-style="ghost"
+            tooltip="Bold"
+            disabled={!editor}
+            data-active-state={editor?.isActive('bold') ? 'on' : 'off'}
             onClick={() => editor?.chain().focus().toggleBold().run()}
           >
-            Bold
-          </button>
-          <button
-            className={`rounded-md border border-zinc-200 px-2 py-1 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900 ${
-              editor?.isActive('italic') ? 'bg-zinc-100 dark:bg-zinc-900' : ''
-            }`}
+            <span className="tiptap-button-text">Bold</span>
+          </Button>
+          <Button
+            type="button"
+            data-style="ghost"
+            tooltip="Italic"
+            disabled={!editor}
+            data-active-state={editor?.isActive('italic') ? 'on' : 'off'}
             onClick={() => editor?.chain().focus().toggleItalic().run()}
           >
-            Italic
-          </button>
-          <button
-            className={`rounded-md border border-zinc-200 px-2 py-1 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900 ${
-              editor?.isActive('underline') ? 'bg-zinc-100 dark:bg-zinc-900' : ''
-            }`}
+            <span className="tiptap-button-text">Italic</span>
+          </Button>
+          <Button
+            type="button"
+            data-style="ghost"
+            tooltip="Underline"
+            disabled={!editor}
+            data-active-state={editor?.isActive('underline') ? 'on' : 'off'}
             onClick={() => editor?.chain().focus().toggleUnderline().run()}
           >
-            Underline
-          </button>
-          <button
-            className={`rounded-md border border-zinc-200 px-2 py-1 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900 ${
-              editor?.isActive('strike') ? 'bg-zinc-100 dark:bg-zinc-900' : ''
-            }`}
+            <span className="tiptap-button-text">Underline</span>
+          </Button>
+          <Button
+            type="button"
+            data-style="ghost"
+            tooltip="Strike"
+            disabled={!editor}
+            data-active-state={editor?.isActive('strike') ? 'on' : 'off'}
             onClick={() => editor?.chain().focus().toggleStrike().run()}
           >
-            Strike
-          </button>
-          <button
-            className={`rounded-md border border-zinc-200 px-2 py-1 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900 ${
-              editor?.isActive('code') ? 'bg-zinc-100 dark:bg-zinc-900' : ''
-            }`}
+            <span className="tiptap-button-text">Strike</span>
+          </Button>
+          <Button
+            type="button"
+            data-style="ghost"
+            tooltip="Inline code"
+            disabled={!editor}
+            data-active-state={editor?.isActive('code') ? 'on' : 'off'}
             onClick={() => editor?.chain().focus().toggleCode().run()}
           >
-            Code
-          </button>
-          <button
-            className={`rounded-md border border-zinc-200 px-2 py-1 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900 ${
-              editor?.isActive('blockquote') ? 'bg-zinc-100 dark:bg-zinc-900' : ''
-            }`}
+            <span className="tiptap-button-text">Code</span>
+          </Button>
+          <Button
+            type="button"
+            data-style="ghost"
+            tooltip="Blockquote"
+            disabled={!editor}
+            data-active-state={editor?.isActive('blockquote') ? 'on' : 'off'}
             onClick={() => editor?.chain().focus().toggleBlockquote().run()}
           >
-            Quote
-          </button>
-          <button
-            className="rounded-md border border-zinc-200 px-2 py-1 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
-            onClick={setLink}
-          >
-            Link
-          </button>
+            <span className="tiptap-button-text">Quote</span>
+          </Button>
+          <Button type="button" data-style="ghost" tooltip="Link" disabled={!editor} onClick={setLink}>
+            <span className="tiptap-button-text">Link</span>
+          </Button>
           <div className="relative" ref={emojiPopoverRef}>
-            <button
-              className="rounded-md border border-zinc-200 px-2 py-1 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
-              onClick={() => setEmojiOpen((v) => !v)}
+            <Button
               type="button"
+              data-style="ghost"
+              tooltip="Emoji"
+              data-state={emojiOpen ? 'open' : 'closed'}
+              onClick={() => setEmojiOpen((v) => !v)}
             >
-              Emoji
-            </button>
+              <span className="tiptap-button-text">Emoji</span>
+            </Button>
             {emojiOpen && (
               <div className="absolute left-0 top-full z-50 mt-2 w-80 rounded-md border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
                 <input
@@ -858,12 +991,9 @@ export default function Editor() {
               </div>
             )}
           </div>
-          <button
-            className="rounded-md border border-zinc-200 px-2 py-1 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
-            onClick={() => setAiOpen(true)}
-          >
-            AI
-          </button>
+          <Button type="button" data-style="ghost" tooltip="AI" onClick={() => setAiOpen(true)}>
+            <span className="tiptap-button-text">AI</span>
+          </Button>
         </div>
         <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
           <span className="rounded-full border border-zinc-200 px-2 py-1 dark:border-zinc-800">

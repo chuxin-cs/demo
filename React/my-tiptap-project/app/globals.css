@@ -88,6 +88,167 @@ body {
   background: rgba(24, 24, 27, 0.6);
 }
 
+.tiptap-codeblock {
+  border: 1px solid rgba(113, 113, 122, 0.25);
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.dark .tiptap-codeblock {
+  border-color: rgba(161, 161, 170, 0.25);
+}
+
+.tiptap-codeblock__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid rgba(113, 113, 122, 0.2);
+  background: rgba(24, 24, 27, 0.04);
+}
+
+.dark .tiptap-codeblock__header {
+  border-bottom-color: rgba(161, 161, 170, 0.2);
+  background: rgba(24, 24, 27, 0.5);
+}
+
+.tiptap-codeblock__header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tiptap-codeblock__select {
+  height: 2rem;
+  padding: 0 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(113, 113, 122, 0.25);
+  background: rgba(255, 255, 255, 0.7);
+  color: rgba(24, 24, 27, 0.9);
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.dark .tiptap-codeblock__select {
+  border-color: rgba(161, 161, 170, 0.25);
+  background: rgba(24, 24, 27, 0.7);
+  color: rgba(244, 244, 245, 0.95);
+}
+
+.tiptap-codeblock .tiptap-codeblock__pre {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  overflow: auto;
+  border-radius: 0;
+  background: transparent;
+}
+
+.tiptap-codeblock__content {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.tiptap-codeblock[data-theme="darcula"] {
+  background: #2b2b2b;
+}
+
+.tiptap-codeblock[data-theme="darcula"] .tiptap-codeblock__header {
+  background: #232323;
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.tiptap-codeblock[data-theme="light"] {
+  background: #f6f8fa;
+}
+
+.tiptap-codeblock[data-theme="light"] .tiptap-codeblock__header {
+  background: #eef2f6;
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+
+.tiptap-codeblock .hljs {
+  color: inherit;
+}
+
+.tiptap-codeblock[data-theme="darcula"] .hljs {
+  color: #e6e6e6;
+}
+
+.tiptap-codeblock[data-theme="darcula"] .hljs-comment,
+.tiptap-codeblock[data-theme="darcula"] .hljs-quote {
+  color: #808080;
+}
+
+.tiptap-codeblock[data-theme="darcula"] .hljs-keyword,
+.tiptap-codeblock[data-theme="darcula"] .hljs-selector-tag,
+.tiptap-codeblock[data-theme="darcula"] .hljs-literal {
+  color: #cc7832;
+}
+
+.tiptap-codeblock[data-theme="darcula"] .hljs-string,
+.tiptap-codeblock[data-theme="darcula"] .hljs-doctag {
+  color: #6a8759;
+}
+
+.tiptap-codeblock[data-theme="darcula"] .hljs-number,
+.tiptap-codeblock[data-theme="darcula"] .hljs-attr {
+  color: #6897bb;
+}
+
+.tiptap-codeblock[data-theme="darcula"] .hljs-title,
+.tiptap-codeblock[data-theme="darcula"] .hljs-section,
+.tiptap-codeblock[data-theme="darcula"] .hljs-function {
+  color: #ffc66d;
+}
+
+.tiptap-codeblock[data-theme="darcula"] .hljs-built_in,
+.tiptap-codeblock[data-theme="darcula"] .hljs-type {
+  color: #a9b7c6;
+}
+
+.tiptap-codeblock[data-theme="darcula"] .hljs-variable,
+.tiptap-codeblock[data-theme="darcula"] .hljs-template-variable {
+  color: #9876aa;
+}
+
+.tiptap-codeblock[data-theme="light"] .hljs {
+  color: #24292f;
+}
+
+.tiptap-codeblock[data-theme="light"] .hljs-comment,
+.tiptap-codeblock[data-theme="light"] .hljs-quote {
+  color: #6e7781;
+}
+
+.tiptap-codeblock[data-theme="light"] .hljs-keyword,
+.tiptap-codeblock[data-theme="light"] .hljs-selector-tag,
+.tiptap-codeblock[data-theme="light"] .hljs-literal {
+  color: #cf222e;
+}
+
+.tiptap-codeblock[data-theme="light"] .hljs-string,
+.tiptap-codeblock[data-theme="light"] .hljs-doctag {
+  color: #0a3069;
+}
+
+.tiptap-codeblock[data-theme="light"] .hljs-number,
+.tiptap-codeblock[data-theme="light"] .hljs-attr {
+  color: #0550ae;
+}
+
+.tiptap-codeblock[data-theme="light"] .hljs-title,
+.tiptap-codeblock[data-theme="light"] .hljs-section,
+.tiptap-codeblock[data-theme="light"] .hljs-function {
+  color: #8250df;
+}
+
+.tiptap-codeblock[data-theme="light"] .hljs-built_in,
+.tiptap-codeblock[data-theme="light"] .hljs-type {
+  color: #116329;
+}
+
 .ProseMirror code {
   background: rgba(24, 24, 27, 0.06);
   padding: 0.1rem 0.25rem;
@@ -96,6 +257,16 @@ body {
 
 .dark .ProseMirror code {
   background: rgba(24, 24, 27, 0.6);
+}
+
+.ProseMirror .tiptap-codeblock code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+.dark .ProseMirror .tiptap-codeblock code {
+  background: transparent;
 }
 
 .ProseMirror img {
