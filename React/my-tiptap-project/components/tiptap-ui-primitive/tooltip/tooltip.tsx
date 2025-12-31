@@ -1,7 +1,6 @@
 "use client"
 
 import {
-  cloneElement,
   createContext,
   forwardRef,
   isValidElement,
@@ -64,6 +63,20 @@ interface TooltipContextValue extends UseFloatingReturn<ReferenceType> {
   getFloatingProps: (
     userProps?: React.HTMLProps<HTMLDivElement>
   ) => Record<string, unknown>
+}
+
+function mergeRefs<T>(...refs: Array<React.Ref<T> | null | undefined>) {
+  return (node: T | null) => {
+    for (const ref of refs) {
+      if (typeof ref === "function") {
+        ref(node)
+        continue
+      }
+      if (ref && typeof ref === "object" && "current" in ref) {
+        ;(ref as React.MutableRefObject<T | null>).current = node
+      }
+    }
+  }
 }
 
 function useTooltip({
@@ -170,21 +183,20 @@ export const TooltipTrigger = forwardRef<HTMLElement, TooltipTriggerProps>(
         : // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (children as any).ref
       : undefined
-    const ref = useMergeRefs([context.refs.setReference, propRef, childrenRef])
+    const ref = useMemo(
+      () => mergeRefs<HTMLElement>(context.refs.setReference, propRef, childrenRef),
+      [context.refs.setReference, propRef, childrenRef]
+    )
 
-    if (asChild && isValidElement(children)) {
-      const dataAttributes = {
-        "data-tooltip-state": context.open ? "open" : "closed",
-      }
-
-      return cloneElement(
-        children,
-        context.getReferenceProps({
-          ref,
-          ...props,
-          ...(typeof children.props === "object" ? children.props : {}),
-          ...dataAttributes,
-        })
+    if (asChild) {
+      return (
+        <span
+          ref={ref}
+          data-tooltip-state={context.open ? "open" : "closed"}
+          {...context.getReferenceProps(props)}
+        >
+          {children}
+        </span>
       )
     }
 

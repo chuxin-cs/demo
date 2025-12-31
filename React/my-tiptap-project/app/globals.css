@@ -27,3 +27,123 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.ProseMirror {
+  line-height: 1.6;
+}
+
+.ProseMirror:focus {
+  outline: none;
+}
+
+.ProseMirror > * + * {
+  margin-top: 0.75rem;
+}
+
+.ProseMirror h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin-top: 1.25rem;
+}
+
+.ProseMirror h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.25;
+  margin-top: 1.1rem;
+}
+
+.ProseMirror h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-top: 1rem;
+}
+
+.ProseMirror ul,
+.ProseMirror ol {
+  padding-left: 1.5rem;
+}
+
+.ProseMirror blockquote {
+  border-left: 3px solid rgba(113, 113, 122, 0.5);
+  padding-left: 0.9rem;
+  color: rgba(113, 113, 122, 1);
+}
+
+.dark .ProseMirror blockquote {
+  color: rgba(161, 161, 170, 1);
+  border-left-color: rgba(161, 161, 170, 0.5);
+}
+
+.ProseMirror pre {
+  background: rgba(24, 24, 27, 0.06);
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  overflow: auto;
+}
+
+.dark .ProseMirror pre {
+  background: rgba(24, 24, 27, 0.6);
+}
+
+.ProseMirror code {
+  background: rgba(24, 24, 27, 0.06);
+  padding: 0.1rem 0.25rem;
+  border-radius: 0.25rem;
+}
+
+.dark .ProseMirror code {
+  background: rgba(24, 24, 27, 0.6);
+}
+
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+
+.ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.ProseMirror th,
+.ProseMirror td {
+  border: 1px solid rgba(113, 113, 122, 0.35);
+  padding: 0.5rem;
+  vertical-align: top;
+}
+
+.dark .ProseMirror th,
+.dark .ProseMirror td {
+  border-color: rgba(161, 161, 170, 0.35);
+}
+
+.collaboration-cursor__caret {
+  position: relative;
+  border-left-width: 2px;
+  border-left-style: solid;
+  border-right-width: 2px;
+  border-right-style: solid;
+  border-right-color: transparent;
+  margin-left: -1px;
+  margin-right: -1px;
+  pointer-events: none;
+}
+
+.collaboration-cursor__label {
+  position: absolute;
+  top: -1.4em;
+  left: -2px;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.75rem;
+  line-height: 1;
+  font-weight: 600;
+  border-radius: 0.35rem;
+  white-space: nowrap;
+  color: white;
+  background: currentColor;
+}
