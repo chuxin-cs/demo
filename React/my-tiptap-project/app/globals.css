@@ -151,6 +151,10 @@ body {
   overflow: auto;
 }
 
+.tiptap-codeblock__scroll--collapsed {
+  max-height: 20rem;
+}
+
 .tiptap-codeblock__gutter {
   user-select: none;
   text-align: right;

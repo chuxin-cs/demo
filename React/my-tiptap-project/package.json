@@ -37,6 +37,7 @@
     "react-dom": "19.2.3",
     "react-hotkeys-hook": "^5.2.1",
     "tippy.js": "^6.3.7",
+    "prettier": "^3.4.2",
     "y-websocket": "^3.0.0",
     "yjs": "^13.6.28"
   },

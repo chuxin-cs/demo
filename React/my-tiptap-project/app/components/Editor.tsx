@@ -40,6 +40,7 @@ import * as Y from 'yjs';
 import tippy, { Instance as TippyInstance } from 'tippy.js';
 import { defaultSelectionBuilder, yCursorPlugin } from '@tiptap/y-tiptap';
 import { Button } from '@/components/tiptap-ui-primitive/button';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 
 type Range = { from: number; to: number };
 type SuggestionItem = {
@@ -60,6 +61,7 @@ type EmojiItem = {
 };
 
 const lowlight = createLowlight(common);
+lowlight.registerAlias({ typescript: 'tsx', javascript: 'jsx' });
 const SLASH_SUGGESTION_KEY = new PluginKey('slash-command');
 const EMOJI_SUGGESTION_KEY = new PluginKey('emoji-command');
 
@@ -92,15 +94,61 @@ async function copyToClipboard(text: string) {
   el.remove();
 }
 
-function CodeBlockNodeView({ node, updateAttributes }: NodeViewProps) {
+function unwrapDefault<T>(mod: { default?: T } | T): T {
+  return (mod as { default?: T }).default ?? (mod as T);
+}
+
+async function formatCodeForLanguage(code: string, language: string) {
+  const normalized = language.trim().toLowerCase();
+  const supported = new Set(['tsx', 'jsx', 'typescript', 'javascript']);
+  if (!supported.has(normalized)) return null;
+
+  const prettier = await import('prettier/standalone');
+  const format = prettier.format;
+  const [estree, babel, typescript] = await Promise.all([
+    import('prettier/plugins/estree'),
+    import('prettier/plugins/babel'),
+    import('prettier/plugins/typescript'),
+  ]);
+
+  const plugins = [unwrapDefault(estree), unwrapDefault(babel), unwrapDefault(typescript)];
+
+  if (normalized === 'tsx') {
+    return format(code, { parser: 'typescript', plugins, filepath: 'file.tsx' });
+  }
+  if (normalized === 'jsx') {
+    return format(code, { parser: 'babel', plugins, filepath: 'file.jsx' });
+  }
+  if (normalized === 'typescript') {
+    return format(code, { parser: 'typescript', plugins, filepath: 'file.ts' });
+  }
+  if (normalized === 'javascript') {
+    return format(code, { parser: 'babel', plugins, filepath: 'file.js' });
+  }
+
+  return null;
+}
+
+function replaceCodeBlockText(editor: TiptapEditor, pos: number, node: ProseMirrorNode, nextText: string) {
+  const { state, view } = editor;
+  const from = pos + 1;
+  const to = pos + node.nodeSize - 1;
+  const tr = state.tr.replaceWith(from, to, state.schema.text(nextText));
+  view.dispatch(tr);
+}
+
+function CodeBlockNodeView({ node, updateAttributes, editor, getPos }: NodeViewProps) {
   const currentLanguage = (node.attrs.language as string | null) ?? null;
   const theme = ((node.attrs.theme as CodeBlockTheme | undefined) ?? 'darcula') satisfies CodeBlockTheme;
+  const collapsed = Boolean((node.attrs.collapsed as boolean | undefined) ?? true);
   const [copied, setCopied] = useState(false);
   const lineCount = Math.max(1, node.textContent.split('\n').length);
+  const formatRequestRef = useRef(0);
+  const isLong = lineCount > 12;
 
   const languages = useMemo(() => {
     const list = lowlight.listLanguages();
-    const unique = Array.from(new Set(list)).sort((a, b) => a.localeCompare(b));
+    const unique = Array.from(new Set([...list, 'tsx', 'jsx'])).sort((a, b) => a.localeCompare(b));
     return ['plaintext', ...unique];
   }, []);
 
@@ -110,17 +158,39 @@ function CodeBlockNodeView({ node, updateAttributes }: NodeViewProps) {
     return () => window.clearTimeout(t);
   }, [copied]);
 
+  const applyLanguage = async (next: string) => {
+    const normalized = next === 'plaintext' ? null : next;
+    updateAttributes({ language: normalized });
+
+    if (!normalized) return;
+    if (!['tsx', 'jsx', 'typescript', 'javascript'].includes(normalized)) return;
+
+    const pos = typeof getPos === 'function' ? getPos() : null;
+    if (typeof pos !== 'number') return;
+
+    const requestId = (formatRequestRef.current += 1);
+    const original = node.textContent;
+    try {
+      const formatted = await formatCodeForLanguage(original, normalized);
+      if (formatRequestRef.current !== requestId) return;
+      if (!formatted || formatted === original) return;
+      replaceCodeBlockText(editor, pos, node, formatted.replace(/\n$/, ''));
+    } catch {
+      return;
+    }
+  };
+
   return (
-    <NodeViewWrapper className="tiptap-codeblock" data-theme={theme}>
+    <NodeViewWrapper
+      className={collapsed && isLong ? 'tiptap-codeblock is-collapsed' : 'tiptap-codeblock'}
+      data-theme={theme}
+    >
       <div className="tiptap-codeblock__header" contentEditable={false}>
         <div className="tiptap-codeblock__header-left">
           <select
             className="tiptap-codeblock__select"
             value={currentLanguage ?? 'plaintext'}
-            onChange={(e) => {
-              const next = e.target.value;
-              updateAttributes({ language: next === 'plaintext' ? null : next });
-            }}
+            onChange={(e) => void applyLanguage(e.target.value)}
           >
             {languages.map((lang) => (
               <option key={lang} value={lang}>
@@ -142,20 +212,32 @@ function CodeBlockNodeView({ node, updateAttributes }: NodeViewProps) {
           </select>
         </div>
 
-        <Button
-          type="button"
-          data-style="ghost"
-          tooltip={copied ? '已复制' : '复制代码'}
-          onClick={async () => {
-            await copyToClipboard(node.textContent);
-            setCopied(true);
-          }}
-        >
-          <span className="tiptap-button-text">{copied ? 'Copied' : 'Copy'}</span>
-        </Button>
+        <div className="tiptap-codeblock__header-left">
+          {isLong ? (
+            <Button
+              type="button"
+              data-style="ghost"
+              tooltip={collapsed ? '展开' : '收起'}
+              onClick={() => updateAttributes({ collapsed: !collapsed })}
+            >
+              <span className="tiptap-button-text">{collapsed ? '展开' : '收起'}</span>
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            data-style="ghost"
+            tooltip={copied ? '已复制' : '复制代码'}
+            onClick={async () => {
+              await copyToClipboard(node.textContent);
+              setCopied(true);
+            }}
+          >
+            <span className="tiptap-button-text">{copied ? 'Copied' : 'Copy'}</span>
+          </Button>
+        </div>
       </div>
 
-      <div className="tiptap-codeblock__scroll">
+      <div className={collapsed && isLong ? 'tiptap-codeblock__scroll tiptap-codeblock__scroll--collapsed' : 'tiptap-codeblock__scroll'}>
         <div className="tiptap-codeblock__gutter" contentEditable={false}>
           {Array.from({ length: lineCount }).map((_, i) => (
             <div key={i} className="tiptap-codeblock__gutter-line">
@@ -180,6 +262,13 @@ const CodeBlockWithUI = CodeBlockLowlight.extend({
         parseHTML: (element) => element.getAttribute('data-theme') ?? 'darcula',
         renderHTML: (attributes) => {
           return { 'data-theme': attributes.theme };
+        },
+      },
+      collapsed: {
+        default: true,
+        parseHTML: (element) => element.getAttribute('data-collapsed') !== 'false',
+        renderHTML: (attributes) => {
+          return { 'data-collapsed': attributes.collapsed ? 'true' : 'false' };
         },
       },
     };
