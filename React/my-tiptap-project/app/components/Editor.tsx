@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   EditorContent,
-  NodeViewContent,
   NodeViewWrapper,
   ReactNodeViewRenderer,
   type NodeViewProps,
   useEditor,
+  EditorContext,
 } from '@tiptap/react';
+import { BubbleMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
@@ -19,7 +20,7 @@ import Suggestion, {
   type SuggestionOptions,
 } from '@tiptap/suggestion';
 import { Extension, type Editor as TiptapEditor } from '@tiptap/core';
-import { PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
 import Link from '@tiptap/extension-link';
 import Underline from '@tiptap/extension-underline';
 import Highlight from '@tiptap/extension-highlight';
@@ -32,7 +33,6 @@ import TableHeader from '@tiptap/extension-table-header';
 import Dropcursor from '@tiptap/extension-dropcursor';
 import Gapcursor from '@tiptap/extension-gapcursor';
 import DragHandle from '@tiptap/extension-drag-handle';
-import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
 import Collaboration from '@tiptap/extension-collaboration';
 import { WebsocketProvider } from 'y-websocket';
@@ -40,7 +40,9 @@ import * as Y from 'yjs';
 import tippy, { Instance as TippyInstance } from 'tippy.js';
 import { defaultSelectionBuilder, yCursorPlugin } from '@tiptap/y-tiptap';
 import { Button } from '@/components/tiptap-ui-primitive/button';
-import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { MAX_FILE_SIZE } from '@/lib/tiptap-utils';
+import { createCodeBlockWithUI } from '@/components/tiptap-ui/code-block';
+import { BlockquoteButton } from '@/components/tiptap-ui/blockquote-button';
 
 type Range = { from: number; to: number };
 type SuggestionItem = {
@@ -64,20 +66,7 @@ const lowlight = createLowlight(common);
 lowlight.registerAlias({ typescript: 'tsx', javascript: 'jsx' });
 const SLASH_SUGGESTION_KEY = new PluginKey('slash-command');
 const EMOJI_SUGGESTION_KEY = new PluginKey('emoji-command');
-
-type CodeBlockTheme = 'darcula' | 'light';
-const CODE_BLOCK_THEMES: Array<{ id: CodeBlockTheme; label: string }> = [
-  { id: 'darcula', label: 'Darcula' },
-  { id: 'light', label: 'Light' },
-];
-
-function prettyLanguageLabel(id: string) {
-  if (!id) return 'Plain text';
-  return id
-    .split(/[-_]/g)
-    .map((p) => (p ? p[0].toUpperCase() + p.slice(1) : p))
-    .join(' ');
-}
+const CodeBlockWithUI = createCodeBlockWithUI(lowlight);
 
 async function copyToClipboard(text: string) {
   if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
@@ -94,213 +83,172 @@ async function copyToClipboard(text: string) {
   el.remove();
 }
 
-function unwrapDefault<T>(mod: { default?: T } | T): T {
-  return (mod as { default?: T }).default ?? (mod as T);
+type ImageAlign = 'left' | 'center' | 'right';
+
+function isImageFile(file: File) {
+  return file.type.startsWith('image/');
 }
 
-async function formatCodeForLanguage(code: string, language: string) {
-  const normalized = language.trim().toLowerCase();
-  const supported = new Set(['tsx', 'jsx', 'typescript', 'javascript']);
-  if (!supported.has(normalized)) return null;
-
-  const prettier = await import('prettier/standalone');
-  const format = prettier.format;
-  const [estree, babel, typescript] = await Promise.all([
-    import('prettier/plugins/estree'),
-    import('prettier/plugins/babel'),
-    import('prettier/plugins/typescript'),
-  ]);
-
-  const plugins = [unwrapDefault(estree), unwrapDefault(babel), unwrapDefault(typescript)];
-
-  if (normalized === 'tsx') {
-    return format(code, { parser: 'typescript', plugins, filepath: 'file.tsx' });
-  }
-  if (normalized === 'jsx') {
-    return format(code, { parser: 'babel', plugins, filepath: 'file.jsx' });
-  }
-  if (normalized === 'typescript') {
-    return format(code, { parser: 'typescript', plugins, filepath: 'file.ts' });
-  }
-  if (normalized === 'javascript') {
-    return format(code, { parser: 'babel', plugins, filepath: 'file.js' });
-  }
-
-  return null;
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(new Error('read failed'));
+    reader.readAsDataURL(file);
+  });
 }
 
-function replaceCodeBlockText(editor: TiptapEditor, pos: number, node: ProseMirrorNode, nextText: string) {
-  const { state, view } = editor;
-  const from = pos + 1;
-  const to = pos + node.nodeSize - 1;
-  const tr = state.tr.replaceWith(from, to, state.schema.text(nextText));
-  view.dispatch(tr);
+async function insertOrReplaceImageFromFile(editor: TiptapEditor, file: File, mode: 'insert' | 'replace') {
+  if (file.size > MAX_FILE_SIZE) {
+    window.alert(`图片过大（最大 ${Math.floor(MAX_FILE_SIZE / 1024 / 1024)}MB）`);
+    return;
+  }
+
+  const src = await fileToDataUrl(file);
+  const alt = file.name || '';
+
+  if (mode === 'replace' && editor.isActive('image')) {
+    editor.chain().focus().updateAttributes('image', { src, alt }).run();
+    return;
+  }
+
+  editor.chain().focus().setImage({ src, alt }).updateAttributes('image', { align: 'center' }).run();
 }
 
-function CodeBlockNodeView({ node, updateAttributes, editor, getPos }: NodeViewProps) {
-  const currentLanguage = (node.attrs.language as string | null) ?? null;
-  const theme = ((node.attrs.theme as CodeBlockTheme | undefined) ?? 'darcula') satisfies CodeBlockTheme;
-  const collapsed = Boolean((node.attrs.collapsed as boolean | undefined) ?? true);
-  const [copied, setCopied] = useState(false);
-  const lineCount = Math.max(1, node.textContent.split('\n').length);
-  const formatRequestRef = useRef(0);
-  const isLong = lineCount > 12;
+async function insertOrReplaceImages(editor: TiptapEditor, files: FileList | File[], mode: 'insert' | 'replace') {
+  const list = Array.from(files).filter(isImageFile);
+  if (list.length === 0) return;
+  for (const f of list) {
+    await insertOrReplaceImageFromFile(editor, f, mode);
+  }
+}
 
-  const languages = useMemo(() => {
-    const list = lowlight.listLanguages();
-    const unique = Array.from(new Set([...list, 'tsx', 'jsx'])).sort((a, b) => a.localeCompare(b));
-    return ['plaintext', ...unique];
-  }, []);
+function ImageNodeView({ node, selected, updateAttributes }: NodeViewProps) {
+  const src = String(node.attrs.src ?? '');
+  const alt = String(node.attrs.alt ?? '');
+  const title = String(node.attrs.title ?? '');
+  const align = (node.attrs.align as ImageAlign | undefined) ?? 'center';
+  const widthAttr = node.attrs.width;
+  const width = typeof widthAttr === 'number' ? widthAttr : widthAttr ? Number(widthAttr) : null;
 
-  useEffect(() => {
-    if (!copied) return;
-    const t = window.setTimeout(() => setCopied(false), 1200);
-    return () => window.clearTimeout(t);
-  }, [copied]);
+  const imgRef = useRef<HTMLImageElement | null>(null);
 
-  const applyLanguage = async (next: string) => {
-    const normalized = next === 'plaintext' ? null : next;
-    updateAttributes({ language: normalized });
+  const startResize = (direction: 'left' | 'right') => (event: React.PointerEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
 
-    if (!normalized) return;
-    if (!['tsx', 'jsx', 'typescript', 'javascript'].includes(normalized)) return;
+    const img = imgRef.current;
+    if (!img) return;
 
-    const pos = typeof getPos === 'function' ? getPos() : null;
-    if (typeof pos !== 'number') return;
+    const startX = event.clientX;
+    const startWidth = img.getBoundingClientRect().width;
+    const container = img.parentElement;
+    const containerWidth = container?.getBoundingClientRect().width ?? startWidth;
 
-    const requestId = (formatRequestRef.current += 1);
-    const original = node.textContent;
-    try {
-      const formatted = await formatCodeForLanguage(original, normalized);
-      if (formatRequestRef.current !== requestId) return;
-      if (!formatted || formatted === original) return;
-      replaceCodeBlockText(editor, pos, node, formatted.replace(/\n$/, ''));
-    } catch {
-      return;
-    }
+    const onMove = (e: PointerEvent) => {
+      const dx = e.clientX - startX;
+      const next = Math.round(
+        Math.max(80, Math.min(containerWidth, startWidth + (direction === 'right' ? dx : -dx)))
+      );
+      updateAttributes({ width: next });
+    };
+
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   };
 
   return (
-    <NodeViewWrapper
-      className={collapsed && isLong ? 'tiptap-codeblock is-collapsed' : 'tiptap-codeblock'}
-      data-theme={theme}
-    >
-      <div className="tiptap-codeblock__header" contentEditable={false}>
-        <div className="tiptap-codeblock__header-left">
-          <select
-            className="tiptap-codeblock__select"
-            value={currentLanguage ?? 'plaintext'}
-            onChange={(e) => void applyLanguage(e.target.value)}
-          >
-            {languages.map((lang) => (
-              <option key={lang} value={lang}>
-                {prettyLanguageLabel(lang === 'plaintext' ? '' : lang)}
-              </option>
-            ))}
-          </select>
-
-          <select
-            className="tiptap-codeblock__select"
-            value={theme}
-            onChange={(e) => updateAttributes({ theme: e.target.value })}
-          >
-            {CODE_BLOCK_THEMES.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="tiptap-codeblock__header-left">
-          {isLong ? (
-            <Button
-              type="button"
-              data-style="ghost"
-              tooltip={collapsed ? '展开' : '收起'}
-              onClick={() => updateAttributes({ collapsed: !collapsed })}
-            >
-              <span className="tiptap-button-text">{collapsed ? '展开' : '收起'}</span>
-            </Button>
-          ) : null}
-          <Button
-            type="button"
-            data-style="ghost"
-            tooltip={copied ? '已复制' : '复制代码'}
-            onClick={async () => {
-              await copyToClipboard(node.textContent);
-              setCopied(true);
-            }}
-          >
-            <span className="tiptap-button-text">{copied ? 'Copied' : 'Copy'}</span>
-          </Button>
-        </div>
-      </div>
-
-      <div className={collapsed && isLong ? 'tiptap-codeblock__scroll tiptap-codeblock__scroll--collapsed' : 'tiptap-codeblock__scroll'}>
-        <div className="tiptap-codeblock__gutter" contentEditable={false}>
-          {Array.from({ length: lineCount }).map((_, i) => (
-            <div key={i} className="tiptap-codeblock__gutter-line">
-              {i + 1}
-            </div>
-          ))}
-        </div>
-        <pre className="tiptap-codeblock__pre" data-theme={theme}>
-          <NodeViewContent as={'code' as never} className="tiptap-codeblock__content hljs" />
-        </pre>
+    <NodeViewWrapper className={`tiptap-image tiptap-image--${align}${selected ? ' is-selected' : ''}`}>
+      <div className="tiptap-image__container" contentEditable={false}>
+        <img
+          ref={imgRef}
+          className="tiptap-image__img"
+          src={src}
+          alt={alt}
+          title={title}
+          style={width ? { width: `${width}px` } : undefined}
+          draggable
+        />
+        {selected ? (
+          <>
+            <div className="tiptap-image__handle tiptap-image__handle--left" onPointerDown={startResize('left')} />
+            <div
+              className="tiptap-image__handle tiptap-image__handle--right"
+              onPointerDown={startResize('right')}
+            />
+          </>
+        ) : null}
       </div>
     </NodeViewWrapper>
   );
 }
 
-const CodeBlockWithUI = CodeBlockLowlight.extend({
+const ImageWithUI = Image.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
-      theme: {
-        default: 'darcula',
-        parseHTML: (element) => element.getAttribute('data-theme') ?? 'darcula',
-        renderHTML: (attributes) => {
-          return { 'data-theme': attributes.theme };
+      width: {
+        default: null,
+        parseHTML: (element) => {
+          const raw = element.getAttribute('data-width') ?? element.getAttribute('width');
+          if (!raw) return null;
+          const n = Number(raw);
+          return Number.isFinite(n) ? n : null;
+        },
+        renderHTML: (attrs) => {
+          return attrs.width ? { 'data-width': String(attrs.width) } : {};
         },
       },
-      collapsed: {
-        default: true,
-        parseHTML: (element) => element.getAttribute('data-collapsed') !== 'false',
-        renderHTML: (attributes) => {
-          return { 'data-collapsed': attributes.collapsed ? 'true' : 'false' };
-        },
+      align: {
+        default: 'center',
+        parseHTML: (element) => element.getAttribute('data-align') ?? 'center',
+        renderHTML: (attrs) => (attrs.align ? { 'data-align': String(attrs.align) } : {}),
       },
     };
   },
   addNodeView() {
-    return ReactNodeViewRenderer(CodeBlockNodeView);
+    return ReactNodeViewRenderer(ImageNodeView);
   },
-  addKeyboardShortcuts() {
-    return {
-      Enter: () => {
-        if (!this.editor.isActive('codeBlock')) return false;
-        this.editor.commands.insertContent('\n');
-        return true;
-      },
-      Tab: () => {
-        if (!this.editor.isActive('codeBlock')) return false;
-        this.editor.commands.insertContent('\t');
-        return true;
-      },
-      'Shift-Tab': () => {
-        if (!this.editor.isActive('codeBlock')) return false;
-        const { from, empty } = this.editor.state.selection;
-        if (empty && from > 1) {
-          const prev = this.editor.state.doc.textBetween(from - 1, from, '\n', '\n');
-          if (prev === '\t') {
-            this.editor.commands.deleteRange({ from: from - 1, to: from });
+});
+
+const ImageFileHandler = Extension.create({
+  name: 'imageFileHandler',
+  addProseMirrorPlugins() {
+    const editor = this.editor;
+    return [
+      new Plugin({
+        key: new PluginKey('image-file-handler'),
+        props: {
+          handlePaste: (_view, event) => {
+            const files = event.clipboardData?.files;
+            if (!files || files.length === 0) return false;
+            if (!Array.from(files).some(isImageFile)) return false;
+            void insertOrReplaceImages(editor, files, 'insert');
             return true;
-          }
-        }
-        return true;
-      },
-    };
+          },
+          handleDrop: (view, event, _slice, moved) => {
+            if (moved) return false;
+            const files = event.dataTransfer?.files;
+            if (!files || files.length === 0) return false;
+            if (!Array.from(files).some(isImageFile)) return false;
+
+            const coords = { left: event.clientX, top: event.clientY };
+            const pos = view.posAtCoords(coords)?.pos;
+            if (typeof pos === 'number') {
+              editor.chain().focus().setTextSelection(pos).run();
+            }
+
+            void insertOrReplaceImages(editor, files, 'insert');
+            return true;
+          },
+        },
+      }),
+    ];
   },
 });
 
@@ -591,11 +539,17 @@ function createSlashItems(options: {
     {
       id: 'image',
       title: 'Image',
-      description: '插入图片 URL',
+      description: '插入图片（也支持拖拽/粘贴）',
       command: ({ editor, range }) => {
         const url = window.prompt('Image URL');
         if (!url) return;
-        editor.chain().focus().deleteRange(range).setImage({ src: url }).run();
+        editor
+          .chain()
+          .focus()
+          .deleteRange(range)
+          .setImage({ src: url })
+          .updateAttributes('image', { align: 'center' })
+          .run();
       },
     },
     {
@@ -639,6 +593,11 @@ export default function Editor() {
   const [aiResult, setAiResult] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+
+  const [imageOpen, setImageOpen] = useState(false);
+  const imagePopoverRef = useRef<HTMLDivElement | null>(null);
+  const imageUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const imageReplaceInputRef = useRef<HTMLInputElement | null>(null);
 
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [emojiQuery, setEmojiQuery] = useState('');
@@ -689,6 +648,18 @@ export default function Editor() {
     window.addEventListener('pointerdown', onPointerDown);
     return () => window.removeEventListener('pointerdown', onPointerDown);
   }, [emojiOpen]);
+
+  useEffect(() => {
+    if (!imageOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (imagePopoverRef.current?.contains(target)) return;
+      setImageOpen(false);
+    };
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => window.removeEventListener('pointerdown', onPointerDown);
+  }, [imageOpen]);
 
   useEffect(() => {
     if (!collabEnabled) {
@@ -802,10 +773,11 @@ export default function Editor() {
           autolink: true,
           linkOnPaste: true,
         }),
-        Image.configure({
+        ImageWithUI.configure({
           inline: false,
           allowBase64: true,
         }),
+        ImageFileHandler,
         Table.configure({
           resizable: true,
         }),
@@ -858,6 +830,29 @@ export default function Editor() {
     },
     [collabFragment, collabProvider, slashExtension, emojiExtension, collabEnabled, collabReady, user]
   );
+
+  const insertImageByUrl = (mode: 'insert' | 'replace') => {
+    if (!editor) return;
+    const url = window.prompt('Image URL');
+    if (!url) return;
+    if (mode === 'replace' && editor.isActive('image')) {
+      editor.chain().focus().updateAttributes('image', { src: url }).run();
+      return;
+    }
+    editor.chain().focus().setImage({ src: url }).updateAttributes('image', { align: 'center' }).run();
+  };
+
+  const onUploadImages = async (event: React.ChangeEvent<HTMLInputElement>, mode: 'insert' | 'replace') => {
+    if (!editor) return;
+    const files = event.target.files;
+    if (!files) return;
+    try {
+      await insertOrReplaceImages(editor, files, mode);
+    } finally {
+      event.target.value = '';
+      setImageOpen(false);
+    }
+  };
 
   useEffect(() => {
     if (!editor) return;
@@ -985,8 +980,27 @@ export default function Editor() {
     editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
   };
 
+  const EditorProvider = EditorContext.Provider;
+  const Blockquote = BlockquoteButton;
+
   return (
-    <div className="flex h-full w-full flex-col">
+    <EditorProvider value={{ editor }}>
+      <div className="flex h-full w-full flex-col">
+      <input
+        ref={imageUploadInputRef}
+        className="hidden"
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={(e) => void onUploadImages(e, 'insert')}
+      />
+      <input
+        ref={imageReplaceInputRef}
+        className="hidden"
+        type="file"
+        accept="image/*"
+        onChange={(e) => void onUploadImages(e, 'replace')}
+      />
       <div className="flex items-center justify-between border-b border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-black">
         <div className="flex flex-wrap gap-2">
           <Button
@@ -1057,19 +1071,46 @@ export default function Editor() {
           >
             <span className="tiptap-button-text">Code</span>
           </Button>
-          <Button
-            type="button"
-            data-style="ghost"
-            tooltip="Blockquote"
-            disabled={!editor}
-            data-active-state={editor?.isActive('blockquote') ? 'on' : 'off'}
-            onClick={() => editor?.chain().focus().toggleBlockquote().run()}
-          >
-            <span className="tiptap-button-text">Quote</span>
-          </Button>
+          <Blockquote text="Quote" />
           <Button type="button" data-style="ghost" tooltip="Link" disabled={!editor} onClick={setLink}>
             <span className="tiptap-button-text">Link</span>
           </Button>
+          <div className="relative" ref={imagePopoverRef}>
+            <Button
+              type="button"
+              data-style="ghost"
+              tooltip="图片"
+              data-state={imageOpen ? 'open' : 'closed'}
+              disabled={!editor}
+              onClick={() => setImageOpen((v) => !v)}
+            >
+              <span className="tiptap-button-text">图片</span>
+            </Button>
+            {imageOpen && (
+              <div className="absolute left-0 top-full z-50 mt-2 w-72 rounded-md border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
+                <div className="grid gap-2">
+                  <button
+                    type="button"
+                    className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-left text-sm text-zinc-900 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                    onClick={() => imageUploadInputRef.current?.click()}
+                  >
+                    上传图片
+                  </button>
+                  <button
+                    type="button"
+                    className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-left text-sm text-zinc-900 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                    onClick={() => {
+                      insertImageByUrl('insert');
+                      setImageOpen(false);
+                    }}
+                  >
+                    插入图片 URL
+                  </button>
+                </div>
+                <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">也支持：拖拽/粘贴图片</div>
+              </div>
+            )}
+          </div>
           <div className="relative" ref={emojiPopoverRef}>
             <Button
               type="button"
@@ -1135,6 +1176,139 @@ export default function Editor() {
       </div>
 
       <div className="flex-1 min-h-0 w-full overflow-auto bg-white p-6 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+        {editor ? (
+          <BubbleMenu
+            editor={editor}
+            options={{ placement: 'top', offset: 8 }}
+            shouldShow={({ editor: ed }) => ed.isActive('image')}
+          >
+            <div className="flex items-center gap-1 rounded-md border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+              <Button
+                type="button"
+                data-style="ghost"
+                tooltip="左对齐"
+                onClick={() => editor.chain().focus().updateAttributes('image', { align: 'left' }).run()}
+              >
+                <span className="tiptap-button-text">左</span>
+              </Button>
+              <Button
+                type="button"
+                data-style="ghost"
+                tooltip="居中"
+                onClick={() => editor.chain().focus().updateAttributes('image', { align: 'center' }).run()}
+              >
+                <span className="tiptap-button-text">中</span>
+              </Button>
+              <Button
+                type="button"
+                data-style="ghost"
+                tooltip="右对齐"
+                onClick={() => editor.chain().focus().updateAttributes('image', { align: 'right' }).run()}
+              >
+                <span className="tiptap-button-text">右</span>
+              </Button>
+              <Button
+                type="button"
+                data-style="ghost"
+                tooltip="自适应宽度"
+                onClick={() => editor.chain().focus().updateAttributes('image', { width: null }).run()}
+              >
+                <span className="tiptap-button-text">自适应</span>
+              </Button>
+              <Button
+                type="button"
+                data-style="ghost"
+                tooltip="替换图片"
+                onClick={() => imageReplaceInputRef.current?.click()}
+              >
+                <span className="tiptap-button-text">替换</span>
+              </Button>
+              <Button
+                type="button"
+                data-style="ghost"
+                tooltip="替换 URL"
+                onClick={() => insertImageByUrl('replace')}
+              >
+                <span className="tiptap-button-text">URL</span>
+              </Button>
+              <Button
+                type="button"
+                data-style="ghost"
+                tooltip="设置 Alt"
+                onClick={() => {
+                  const prev = String(editor.getAttributes('image').alt ?? '');
+                  const next = window.prompt('Alt', prev);
+                  if (next === null) return;
+                  editor.chain().focus().updateAttributes('image', { alt: next }).run();
+                }}
+              >
+                <span className="tiptap-button-text">Alt</span>
+              </Button>
+              <Button
+                type="button"
+                data-style="ghost"
+                tooltip="设置标题"
+                onClick={() => {
+                  const prev = String(editor.getAttributes('image').title ?? '');
+                  const next = window.prompt('Title', prev);
+                  if (next === null) return;
+                  editor.chain().focus().updateAttributes('image', { title: next }).run();
+                }}
+              >
+                <span className="tiptap-button-text">Title</span>
+              </Button>
+              <Button
+                type="button"
+                data-style="ghost"
+                tooltip="复制链接"
+                onClick={async () => {
+                  const src = String(editor.getAttributes('image').src ?? '');
+                  if (!src) return;
+                  await copyToClipboard(src);
+                }}
+              >
+                <span className="tiptap-button-text">复制</span>
+              </Button>
+              <Button
+                type="button"
+                data-style="ghost"
+                tooltip="打开"
+                onClick={() => {
+                  const src = String(editor.getAttributes('image').src ?? '');
+                  if (!src) return;
+                  window.open(src, '_blank', 'noopener,noreferrer');
+                }}
+              >
+                <span className="tiptap-button-text">打开</span>
+              </Button>
+              <Button
+                type="button"
+                data-style="ghost"
+                tooltip="下载"
+                onClick={() => {
+                  const src = String(editor.getAttributes('image').src ?? '');
+                  if (!src) return;
+                  const a = document.createElement('a');
+                  a.href = src;
+                  a.download = 'image';
+                  document.body.appendChild(a);
+                  a.click();
+                  a.remove();
+                }}
+              >
+                <span className="tiptap-button-text">下载</span>
+              </Button>
+              <Button
+                type="button"
+                data-style="ghost"
+                tooltip="删除"
+                onClick={() => editor.chain().focus().deleteSelection().run()}
+              >
+                <span className="tiptap-button-text">删除</span>
+              </Button>
+            </div>
+          </BubbleMenu>
+        ) : null}
         <EditorContent editor={editor} />
       </div>
 
@@ -1204,6 +1378,7 @@ export default function Editor() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </EditorProvider>
   );
 }
